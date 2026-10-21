@@ -1,0 +1,53 @@
+{
+  "name": "once-action",
+  "version": "0.1.0",
+  "description": "Idempotency for Next.js Server Actions: the same key and input replay the stored result, a different input returns a mismatch, and an in-flight duplicate returns a conflict.",
+  "license": "MIT",
+  "author": "Pro Gineous <dev@progineous.com>",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.test.json --noEmit",
+    "test": "tsc -p tsconfig.json && tsc -p tsconfig.test.json --noEmit && node --import tsx --test test/*.test.ts",
+    "example": "tsx examples/checkout.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/progineousgb/once-action.git"
+  },
+  "bugs": {
+    "url": "https://github.com/progineousgb/once-action/issues"
+  },
+  "homepage": "https://github.com/progineousgb/once-action#readme",
+  "keywords": [
+    "nextjs",
+    "server-actions",
+    "idempotency",
+    "app-router"
+  ],
+  "peerDependencies": {
+    "next": ">=16.4.2 <17"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}
