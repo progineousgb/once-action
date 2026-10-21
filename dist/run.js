@@ -20,13 +20,18 @@ export async function runIdempotent(store, key, input, run, options) {
     if (invalidKey(key)) {
         return { ok: false, error: { code: "invalid_key" } };
     }
+    const scope = options?.scope;
+    if (scope !== undefined && (typeof scope !== "string" || scope.length > MAX_KEY_LENGTH)) {
+        throw new TypeError("scope must be a string of at most 255 characters.");
+    }
+    const storeKey = scope === undefined ? key : `${scope.length}:${scope}:${key}`;
     const hashInput = options?.fingerprint ?? fingerprintOf;
     const fingerprint = hashInput(input);
     if (typeof fingerprint !== "string" || fingerprint.length === 0 || fingerprint.length > MAX_FINGERPRINT_LENGTH) {
         throw new TypeError("fingerprint must return a non-empty string of at most 1024 characters.");
     }
     const now = options?.now ?? Date.now;
-    const claim = await store.claim(key, fingerprint, now());
+    const claim = await store.claim(storeKey, fingerprint, now());
     if (!claim.claimed) {
         // A different payload owns the key even when the first call is still in flight.
         if (claim.record.fingerprint !== fingerprint) {
@@ -40,9 +45,9 @@ export async function runIdempotent(store, key, input, run, options) {
     const token = claim.token;
     try {
         const value = await run(input);
-        const saved = await store.complete(key, token, value, now());
+        const saved = await store.complete(storeKey, token, value, now());
         if (!saved) {
-            const current = await store.read(key);
+            const current = await store.read(storeKey, now());
             if (current && current.state === "done" && current.fingerprint === fingerprint) {
                 return { ok: true, replayed: true, value: current.value };
             }
@@ -51,7 +56,7 @@ export async function runIdempotent(store, key, input, run, options) {
         return { ok: true, replayed: false, value };
     }
     catch (error) {
-        await store.release(key, token);
+        await store.release(storeKey, token);
         throw error;
     }
 }

@@ -40,7 +40,7 @@ export interface IdempotencyStore<T> {
     now: number,
   ): Promise<boolean> | boolean;
   release(key: string, token: string): Promise<void> | void;
-  read(key: string): Promise<IdempotencyRecord<T> | undefined> | IdempotencyRecord<T> | undefined;
+  read(key: string, now?: number): Promise<IdempotencyRecord<T> | undefined> | IdempotencyRecord<T> | undefined;
 }
 
 export type IdempotencyError =
@@ -55,11 +55,18 @@ export type IdempotentResult<T> =
 export type RunIdempotentOptions<TInput> = {
   now?: () => number;
   fingerprint?: (input: TInput) => string;
+  /**
+   * Namespace for the key, such as a user or session id. Two scopes never share
+   * a stored result, even when the client sends the same key.
+   */
+  scope?: string;
 };
 
 export type MemoryStoreOptions = {
   ttlMs?: number;
   inflightTtlMs?: number;
+  /** Upper bound on stored rows. The oldest rows are dropped first. */
+  maxEntries?: number;
 };
 
 export type FormActionInput = {

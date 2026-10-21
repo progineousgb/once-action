@@ -54,6 +54,12 @@ npm install github:progineousgb/once-action
 
 It declares a peer dependency of `next@>=16.4.2 <17`. Nothing in the module imports `next`. Node.js 20 or newer is required, because the memory store and the default fingerprint use `node:crypto`.
 
+The command is the same on Linux, macOS, and Windows. Install Node.js 20 or newer first: on Linux use your distribution's package manager or nvm, on macOS use the installer from nodejs.org, Homebrew (`brew install node`), or nvm, and on Windows use the installer from nodejs.org or `winget install OpenJS.NodeJS.LTS`. Git has to be on your `PATH`, because npm clones the repository. On Windows, run the commands in PowerShell or Command Prompt.
+
+### Runtime
+
+The module imports `node:crypto`, so it runs in the Node.js runtime only. A Server Action or route that sets `export const runtime = "edge"` cannot use it. Server Actions use the Node.js runtime by default.
+
 ## Example
 
 `examples/checkout.ts` places an order twice with the key `checkout-4f2a` and the input `{ sku: "pen", qty: 2 }`, then places a pencil with that same key, then starts a pen order on `checkout-9b10` and calls it again before the first call resolves.
@@ -92,9 +98,18 @@ export async function placeOrder(_prev: unknown, formData: FormData) {
     return { ok: false as const, error: { code: "invalid_qty" as const } };
   }
 
-  return runIdempotent(orders, key, { sku: input.sku, qty }, async (fields) => {
-    return createOrder(fields.sku, fields.qty);
-  });
+  const userId = await currentUserId();
+  return runIdempotent(
+    orders,
+    key,
+    { sku: input.sku, qty },
+    async (fields) => createOrder(fields.sku, fields.qty),
+    { scope: userId },
+  );
+}
+
+async function currentUserId(): Promise<string> {
+  return "user_1"; // read this from your session
 }
 
 async function createOrder(sku: string, qty: number): Promise<Receipt> {
@@ -183,6 +198,8 @@ type IdempotencyError =
 
 `run` is called only when this call wins the claim. `replayed` is `false` for that first success and `true` when the value came from the store.
 
+`options.scope` namespaces the key, usually with a user or session id. The key comes from the client, so without a scope a second user who sends the same key and the same input receives the first user's stored result. Set a scope whenever the result is private.
+
 `options.now` defaults to `Date.now`. Tests pass a clock so expiry does not depend on a real wait. `options.fingerprint` defaults to `fingerprintOf`. A custom function must return a non-empty string of at most 1024 characters. An empty fingerprint throws `TypeError` and does not claim the key.
 
 A throw from `run`, from `fingerprint`, or from storing the value is rethrown after the in-flight row owned by this call is released. The thrown value is not the stored result. The next call with the same key can run again.
@@ -194,7 +211,9 @@ Returns an `IdempotencyStore` backed by a `Map` in the current process.
 - `ttlMs`: a finished row older than this many milliseconds can be claimed again. Omit it and finished rows stay until the process drops the store.
 - `inflightTtlMs`: an in-flight row older than this many milliseconds can be claimed by a later call. Omit it and an in-flight row stays until `complete`, `release`, or process exit. The first call is not cancelled. If it finishes after the takeover, its `complete` fails and the newer stored value is the one a later replay returns.
 
-Both options, when set, have to be positive finite numbers.
+- `maxEntries`: the most rows the map keeps. When a new claim goes over the limit, the oldest rows are dropped first.
+
+Expired rows are swept every 1024 claims, so a store with `ttlMs` does not keep growing. All options, when set, have to be positive finite numbers. Set `inflightTtlMs` if an action can hang, otherwise a stuck call holds its key until the process restarts.
 
 ### `inputFromFormData(formData, keyField?)`
 
@@ -212,7 +231,7 @@ Accepted values are `null`, booleans, finite numbers, strings, dates, arrays, an
 claim(key, fingerprint, now): Promise<Claim<T>> | Claim<T>
 complete(key, token, value, now): Promise<boolean> | boolean
 release(key, token): Promise<void> | void
-read(key): Promise<IdempotencyRecord<T> | undefined> | IdempotencyRecord<T> | undefined
+read(key, now?): Promise<IdempotencyRecord<T> | undefined> | IdempotencyRecord<T> | undefined
 ```
 
 `claim` has to be atomic. The check and the insert of the in-flight row happen in one step. Two callers must not both receive `{ claimed: true }`.
@@ -239,7 +258,7 @@ A key longer than 255 characters returns `invalid_key`. The default fingerprint 
 
 Two calls with different keys both run, even when the input matches. The key is the identity of the attempt. Rotating it after every render, or inside the action, defeats the replay.
 
-The memory store holds finished values until `ttlMs` elapses or the process exits. There is no `forget` method. Put only the result you are willing to keep, and set `ttlMs` for a long-running process.
+The memory store holds finished values until `ttlMs` elapses, `maxEntries` pushes them out, or the process exits. There is no `forget` method. Put only the result you are willing to keep, and set `ttlMs` for a long-running process.
 
 Arabic text, locale segments, and the `dir` attribute are outside this package. A string of Arabic is a normal string input and is fingerprinted as UTF-8, which is enough for an English or Arabic shop to pass a product name through. The library does not set document direction.
 
@@ -249,7 +268,7 @@ Arabic text, locale segments, and the `dir` attribute are outside this package. 
 npm test
 ```
 
-That typechecks, compiles `src` to `dist`, and runs the unit tests with `node --test`. No network and no browser. `npm run example` prints the checkout transcript above.
+That typechecks, compiles `src` to `dist`, and runs the unit tests with `node --test`. No network and no browser. `npm run example` prints the checkout transcript above. Run `npm run lint` to check the code with ESLint.
 
 ## License
 

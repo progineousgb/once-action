@@ -56,7 +56,29 @@ function toRecord<T>(entry: Entry<T>): IdempotencyRecord<T> {
 export function createMemoryStore<T>(options?: MemoryStoreOptions): IdempotencyStore<T> {
   const ttlMs = positive("ttlMs", options?.ttlMs);
   const inflightTtlMs = positive("inflightTtlMs", options?.inflightTtlMs);
+  const maxEntries = positive("maxEntries", options?.maxEntries);
   const entries = new Map<string, Entry<T>>();
+  let claimsSinceSweep = 0;
+
+  function sweep(now: number): void {
+    for (const [key, entry] of entries) {
+      if (expired(entry, now)) {
+        entries.delete(key);
+      }
+    }
+  }
+
+  function enforceLimit(): void {
+    if (maxEntries === undefined) {
+      return;
+    }
+    for (const key of entries.keys()) {
+      if (entries.size <= maxEntries) {
+        return;
+      }
+      entries.delete(key);
+    }
+  }
 
   function expired(entry: Entry<T>, now: number): boolean {
     if (entry.state === "done") {
@@ -67,10 +89,16 @@ export function createMemoryStore<T>(options?: MemoryStoreOptions): IdempotencyS
 
   return {
     claim(key, fingerprint, now): Claim<T> {
+      claimsSinceSweep += 1;
+      if (claimsSinceSweep >= 1024) {
+        claimsSinceSweep = 0;
+        sweep(now);
+      }
       const existing = entries.get(key);
       if (existing && !expired(existing, now)) {
         return { claimed: false, record: toRecord(existing) };
       }
+      entries.delete(key);
       const entry: Inflight = {
         state: "inflight",
         fingerprint,
@@ -78,6 +106,7 @@ export function createMemoryStore<T>(options?: MemoryStoreOptions): IdempotencyS
         token: randomUUID(),
       };
       entries.set(key, entry);
+      enforceLimit();
       return { claimed: true, token: entry.token };
     },
 
@@ -106,9 +135,9 @@ export function createMemoryStore<T>(options?: MemoryStoreOptions): IdempotencyS
       }
     },
 
-    read(key): IdempotencyRecord<T> | undefined {
+    read(key, now): IdempotencyRecord<T> | undefined {
       const existing = entries.get(key);
-      if (!existing) {
+      if (!existing || now !== undefined && expired(existing, now)) {
         return undefined;
       }
       return toRecord(existing);
