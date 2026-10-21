@@ -1,6 +1,6 @@
 {
   "name": "once-action",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Idempotency for Next.js Server Actions: the same key and input replay the stored result, a different input returns a mismatch, and an in-flight duplicate returns a conflict.",
   "license": "MIT",
   "author": "Pro Gineous <github@progineous.com>",

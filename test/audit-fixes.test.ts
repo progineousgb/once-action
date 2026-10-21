@@ -71,3 +71,21 @@ test("twenty parallel duplicates run the action once", async () => {
   assert.equal(calls, 1);
   assert.equal(results.filter((r) => !r.ok && r.error.code === "conflict").length, 19);
 });
+
+test("maxEntries never evicts an in-flight entry", async () => {
+  const store = createMemoryStore<number>({ maxEntries: 2 });
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  const running = runIdempotent(store, "slow", 1, async () => {
+    await gate;
+    return 7;
+  });
+  for (let i = 0; i < 10; i += 1) {
+    await runIdempotent(store, `k${i}`, 1, () => i);
+  }
+  assert.equal((await store.read("slow"))?.state, "inflight");
+  const dup = await runIdempotent(store, "slow", 1, () => 99);
+  assert.equal(dup.ok, false);
+  release();
+  assert.deepEqual(await running, { ok: true, replayed: false, value: 7 });
+});
