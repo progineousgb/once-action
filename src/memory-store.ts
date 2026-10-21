@@ -72,11 +72,15 @@ export function createMemoryStore<T>(options?: MemoryStoreOptions): IdempotencyS
     if (maxEntries === undefined) {
       return;
     }
-    for (const key of entries.keys()) {
+    // Only finished entries are evicted. An in-flight entry is never dropped,
+    // so a running action keeps its claim and a duplicate still sees a conflict.
+    for (const [key, entry] of entries) {
       if (entries.size <= maxEntries) {
         return;
       }
-      entries.delete(key);
+      if (entry.state === "done") {
+        entries.delete(key);
+      }
     }
   }
 
@@ -125,6 +129,7 @@ export function createMemoryStore<T>(options?: MemoryStoreOptions): IdempotencyS
         value: stored,
       };
       entries.set(key, done);
+      enforceLimit();
       return true;
     },
 

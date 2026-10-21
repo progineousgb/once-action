@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.1.1 (2026-10-22)
+
+- maxEntries now evicts only finished entries. An in-flight entry is never evicted, so a running action keeps its claim.
+- Add a CI workflow for lint and tests.
+
 ## v0.1.0 (2026-10-21)
 
 First tagged release. Idempotency for Next.js Server Actions: the same key and input replay the stored result, a different input returns a mismatch, and an in-flight duplicate returns a conflict.
