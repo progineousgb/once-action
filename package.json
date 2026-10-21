@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Idempotency for Next.js Server Actions: the same key and input replay the stored result, a different input returns a mismatch, and an in-flight duplicate returns a conflict.",
   "license": "MIT",
-  "author": "Pro Gineous <dev@progineous.com>",
+  "author": "Pro Gineous <github@progineous.com>",
   "type": "module",
   "engines": {
     "node": ">=20"
