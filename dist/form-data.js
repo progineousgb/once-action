@@ -23,7 +23,9 @@ export function inputFromFormData(formData, keyField = "idempotencyKey") {
         if (Object.prototype.hasOwnProperty.call(input, name)) {
             throw new TypeError(`Field "${name}" is repeated.`);
         }
-        input[name] = value;
+        // defineProperty, not assignment: a field named "__proto__" must become an
+        // own key instead of hitting the Object.prototype setter and vanishing.
+        Object.defineProperty(input, name, { value, enumerable: true, writable: true, configurable: true });
     }
     if (key === undefined) {
         throw new TypeError(`FormData is missing "${keyField}".`);

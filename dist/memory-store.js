@@ -33,7 +33,27 @@ function toRecord(entry) {
 export function createMemoryStore(options) {
     const ttlMs = positive("ttlMs", options?.ttlMs);
     const inflightTtlMs = positive("inflightTtlMs", options?.inflightTtlMs);
+    const maxEntries = positive("maxEntries", options?.maxEntries);
     const entries = new Map();
+    let claimsSinceSweep = 0;
+    function sweep(now) {
+        for (const [key, entry] of entries) {
+            if (expired(entry, now)) {
+                entries.delete(key);
+            }
+        }
+    }
+    function enforceLimit() {
+        if (maxEntries === undefined) {
+            return;
+        }
+        for (const key of entries.keys()) {
+            if (entries.size <= maxEntries) {
+                return;
+            }
+            entries.delete(key);
+        }
+    }
     function expired(entry, now) {
         if (entry.state === "done") {
             return ttlMs !== undefined && now - entry.finishedAt >= ttlMs;
@@ -42,10 +62,16 @@ export function createMemoryStore(options) {
     }
     return {
         claim(key, fingerprint, now) {
+            claimsSinceSweep += 1;
+            if (claimsSinceSweep >= 1024) {
+                claimsSinceSweep = 0;
+                sweep(now);
+            }
             const existing = entries.get(key);
             if (existing && !expired(existing, now)) {
                 return { claimed: false, record: toRecord(existing) };
             }
+            entries.delete(key);
             const entry = {
                 state: "inflight",
                 fingerprint,
@@ -53,6 +79,7 @@ export function createMemoryStore(options) {
                 token: randomUUID(),
             };
             entries.set(key, entry);
+            enforceLimit();
             return { claimed: true, token: entry.token };
         },
         complete(key, token, value, now) {
@@ -78,9 +105,9 @@ export function createMemoryStore(options) {
                 entries.delete(key);
             }
         },
-        read(key) {
+        read(key, now) {
             const existing = entries.get(key);
-            if (!existing) {
+            if (!existing || now !== undefined && expired(existing, now)) {
                 return undefined;
             }
             return toRecord(existing);
